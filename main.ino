@@ -284,9 +284,26 @@ void drawDisplay() {
         else if (currentMinutes >= sunsetMinutes || currentMinutes < sunriseMinutes) {
           drawStars(u8g2, timeStr);
         }
-        else if (timeinfo.tm_hour >= 15) {
-          drawPike(u8g2, fishPosX, timeStr);
-          u8g2.drawLine(0, 60, 127, 60);
+        else if (timeinfo.tm_hour >= 14) {
+             u8g2.setDrawColor(1);
+
+      u8g2.drawBitmap(pikeX, 0, 128 / 8, 64, pike);
+
+      pikeX += 4; 
+
+      if (pikeX > 128) {
+
+        pikeX = -128;
+
+      }
+
+      u8g2.setDrawColor(1); 
+
+      u8g2.setFont(u8g2_font_ncenB08_tr);
+
+      u8g2.setCursor(48, 10);
+
+      u8g2.print(timeStr);
         }
         else {
           const unsigned char* frame = (const unsigned char*)pgm_read_ptr(&cat_allArray[catFrameIndex]);
@@ -393,8 +410,8 @@ void setup() {
   pinMode(btnPin, INPUT_PULLUP);
   buzzer.begin(); 
 
-  String savedSsid = "SSID";
-  String savedPass = "PASS";
+  String savedSsid = "Vodafone-2g";
+  String savedPass = "Stehlikova11";
 
   preferences.begin("wifi-config", true);
   if (preferences.isKey("ssid")) {
