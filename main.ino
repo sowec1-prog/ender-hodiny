@@ -38,19 +38,19 @@ const int pinA = 8;
 const int pinB = 9;
 const int btnPin = 3;
 
+// Nové menu bez spořičů a melodií, přidán Východ a západ slunce
 const char *menuItems[] = {
   "1. Pocasi", 
-  "2. Kurzy men (CNB)", 
-  "3. Nakupni seznam",
-  "4. Sporic",
-  "5. Melodie",
-  "6. System / IP",
-  "7. Zmena WiFi"
+  "2. Vychod a zapad", 
+  "3. Kurzy men (CNB)", 
+  "4. Nakupni seznam",
+  "5. System / IP",
+  "6. Zmena WiFi"
 };
-const int numItems = 7;
+const int numItems = 6;
 int selected = 0;
 int scrollOffset = 0;
-
+int pikeX = -128; // Začíná úplně vlevo mimo displej
 bool inSubMenu = false;
 int subSelected = 0;
 int subScrollOffset = 0;
@@ -58,6 +58,7 @@ bool wifiConfigMode = false;
 
 bool inScreenSaver = false;
 int catFrameIndex = 0;
+int epdFrameIndex = 0;
 int fishPosX = -50;
 unsigned long lastSaverAnimTime = 0;
 
@@ -85,7 +86,8 @@ const char *melodyItems[] = {
 };
 const int numMelodies = 3;
 
-String cnbData = "Nacitani...";
+String cnbEurData = "Nacitani EUR...";
+String cnbUsdData = "Nacitani USD...";
 String sunData = "Nacitani...";
 int sunriseHour = 6;   
 int sunriseMinute = 0; 
@@ -125,11 +127,25 @@ void fetchCNBData() {
     int httpCode = http.GET();
     if (httpCode > 0) {
       String payload = http.getString();
+      
+      // Zpracování EUR
       int eurIndex = payload.indexOf("EUR");
-      if (eurIndex != -1) cnbData = payload.substring(eurIndex, eurIndex + 35);
-      else cnbData = "EUR nenalezen";
+      if (eurIndex != -1) {
+        cnbEurData = payload.substring(eurIndex, eurIndex + 12);
+      } else {
+        cnbEurData = "EUR nenalezen";
+      }
+
+      // Zpracování USD
+      int usdIndex = payload.indexOf("USD");
+      if (usdIndex != -1) {
+        cnbUsdData = payload.substring(usdIndex, usdIndex + 12);
+      } else {
+        cnbUsdData = "USD nenalezen";
+      }
     } else {
-      cnbData = "Chyba CNB";
+      cnbEurData = "Chyba CNB";
+      cnbUsdData = "Chyba CNB";
     }
     http.end();
   }
@@ -226,15 +242,31 @@ void drawDisplay() {
       drawStars(u8g2, timeStr);
     }
     else if (forcedSaverMode == 5) {
-      // Vykreslení epd_bitmap_.h (upravte název pole dle potřeby)
-      // u8g2.drawBitmap(0, 0, 128 / 8, 64, nazevPoleZepdBitmap);
-      u8g2.setFont(u8g2_font_ncenB08_tr);
-      u8g2.setCursor(48, 10);
-      u8g2.print(timeStr);
-    }
+    // Načtení aktuálního snímku z PROGMEM pomocí správného názvu pole
+    const unsigned char* frame = (const unsigned char*)pgm_read_ptr(&epd_bitmap_allArray[epdFrameIndex]);
+    
+    u8g2.setDrawColor(1);
+    u8g2.drawBitmap(0, 0, 128 / 8, 64, frame);
+    
+    u8g2.setFont(u8g2_font_ncenB08_tr);
+    u8g2.setCursor(48, 10);
+    u8g2.print(timeStr);
+
+    // Posun na další snímek (přepínání animace)
+    /* Můžete si vytvořit vlastní časovač nebo proměnnou pro změnu indexu (0 až 4)
+    frameIndex++;
+    if (frameIndex >= 5) {
+      frameIndex = 0; // Po posledním snímku se vrátíme na začátek
+    } */
+}
     else if (forcedSaverMode == 6) {
-      // Vykreslení pike.h (upravte dle potřeby)
-      drawPike(u8g2, fishPosX, timeStr);
+      u8g2.setDrawColor(1);
+      u8g2.drawBitmap(pikeX, 0, 128 / 8, 64, pike);
+      pikeX += 4; 
+      if (pikeX > 128) {
+        pikeX = -128;
+      }
+      u8g2.setDrawColor(1); 
       u8g2.setFont(u8g2_font_ncenB08_tr);
       u8g2.setCursor(48, 10);
       u8g2.print(timeStr);
@@ -299,9 +331,19 @@ void drawDisplay() {
       if (selected == 0) {
         weather.drawSubMenu(u8g2);
       } else if (selected == 1) {
-        u8g2.drawStr(0, 25, "--- KURZY MEN ---");
-        u8g2.drawStr(0, 45, cnbData.c_str());
+        // Podmenu pro Východ a západ slunce
+        u8g2.drawStr(0, 25, "--- VYCHOD / ZAPAD ---");
+        String sRise = "Vychod: " + sunriseStr;
+        String sSet = "Zapad:  " + sunsetStr;
+        u8g2.drawStr(0, 42, sRise.c_str());
+        u8g2.drawStr(0, 58, sSet.c_str());
       } else if (selected == 2) {
+        // Podmenu pro Kurzy měn (EUR + USD)
+        u8g2.drawStr(0, 25, "--- KURZY MEN (CNB) ---");
+        u8g2.drawStr(0, 42, cnbEurData.c_str());
+        u8g2.drawStr(0, 58, cnbUsdData.c_str());
+      } else if (selected == 3) {
+        // Nákupní seznam
         u8g2.drawStr(0, 25, "--- NAKUPNI SEZNAM ---");
         if (shoppingCount == 0) {
           u8g2.drawStr(0, 45, "Seznam je prazdny.");
@@ -325,28 +367,13 @@ void drawDisplay() {
             }
           }
         }
-      } else if (selected == 3) {
-        u8g2.drawStr(0, 25, "--- SPORIC ---");
-        u8g2.drawStr(0, 42, "Stiskni pro start");
       } else if (selected == 4) {
-        u8g2.drawStr(0, 25, "--- MELODIE ---");
-        for(int i = 0; i < numMelodies; i++) {
-          int yPos = 38 + (i * 10);
-          if(i == subSelected) {
-            u8g2.drawStr(0, yPos, ">");
-            u8g2.drawBox(10, yPos - 9, 118, 10);
-            u8g2.setDrawColor(0);
-            u8g2.drawStr(12, yPos, melodyItems[i]);
-            u8g2.setDrawColor(1);
-          } else {
-            u8g2.drawStr(12, yPos, melodyItems[i]);
-          }
-        }
-      } else if (selected == 5) {
+        // Systém / IP
         u8g2.drawStr(0, 25, "--- SYSTEM ---");
         String ipStr = "IP: " + WiFi.localIP().toString();
         u8g2.drawStr(0, 40, ipStr.c_str());
-      } else if (selected == 6) {
+      } else if (selected == 5) {
+        // Změna WiFi
         u8g2.drawStr(0, 25, "--- ZMENA WIFI ---");
         u8g2.drawStr(0, 42, "Stiskni pro start");
         u8g2.drawStr(0, 56, "AP: ESP32-Nastaveni");
@@ -366,8 +393,8 @@ void setup() {
   pinMode(btnPin, INPUT_PULLUP);
   buzzer.begin(); 
 
-  String savedSsid = "Vodafone-2g";
-  String savedPass = "Stehlikova11";
+  String savedSsid = "SSID";
+  String savedPass = "PASS";
 
   preferences.begin("wifi-config", true);
   if (preferences.isKey("ssid")) {
@@ -451,6 +478,7 @@ void loop() {
   if (inScreenSaver && (millis() - lastSaverAnimTime > 500)) {
     lastSaverAnimTime = millis();
     catFrameIndex = (catFrameIndex + 1) % 4;
+    epdFrameIndex = (epdFrameIndex + 1) % 5;
     fishPosX += 2;
     if (fishPosX > 128) fishPosX = -50;
     drawDisplay();
@@ -472,10 +500,8 @@ void loop() {
             } else {
               if (selected == 0) {
                 weather.handleScroll(1); 
-              } else if (selected == 2 && shoppingCount > 0) {
+              } else if (selected == 3 && shoppingCount > 0) {
                 subSelected = (subSelected + 1) % shoppingCount;
-              } else if (selected == 4) {
-                subSelected = (subSelected + 1) % numMelodies;
               }
             }
           } else {
@@ -484,10 +510,8 @@ void loop() {
             } else {
               if (selected == 0) {
                 weather.handleScroll(-1); 
-              } else if (selected == 2 && shoppingCount > 0) {
+              } else if (selected == 3 && shoppingCount > 0) {
                 subSelected = (subSelected - 1 + shoppingCount) % shoppingCount;
-              } else if (selected == 4) {
-                subSelected = (subSelected - 1 + numMelodies) % numMelodies;
               }
             }
           }
@@ -511,23 +535,14 @@ void loop() {
           subSelected = 0;
           subScrollOffset = 0;
         } else {
-          if (selected == 2 && shoppingCount > 0) {
+          if (selected == 3 && shoppingCount > 0) {
             for(int i = subSelected; i < shoppingCount - 1; i++) {
               shoppingList[i] = shoppingList[i + 1];
             }
             shoppingCount--;
             if (subSelected >= shoppingCount && shoppingCount > 0) subSelected = shoppingCount - 1;
           } 
-          else if (selected == 3) {
-            inScreenSaver = true;
-            forcedSaverMode = 0; 
-            inSubMenu = false;
-          }
-          else if (selected == 4) {
-            if (subSelected == 0) buzzer.playMelody(happy, HAPPY_LENGTH, 120);
-            else if (subSelected == 1) buzzer.playMelody(obed, OBED_LENGTH, 140);
-          }
-          else if (selected == 6) {
+          else if (selected == 5) {
             wifiConfigMode = true;
             WiFi.disconnect();
             WiFi.softAP("ESP32-Nastaveni");
